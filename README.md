@@ -1,36 +1,145 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Agent Run Inspector
 
-## Getting Started
+Agent Run Inspector is a small full-stack prototype for reviewing multi-step agent runs after they complete or hit a human review checkpoint.
 
-First, run the development server:
+## At A Glance
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Purpose: inspect an entire agent run, not just one response or one diff
+- Surface: task sidebar, execution timeline, files touched, and a structured review card
+- Stack: Next.js App Router, React, TypeScript, Tailwind CSS, Zod
+- Data: seeded local tasks and timeline events
+- Review generation: single API route with deterministic fallback and optional OpenAI usage
+
+## What It Is
+
+This project is a trust and observability layer for agent execution. It helps a human reviewer understand what the agent scanned, what it reasoned about, which files were in scope, and what the next steering action should be.
+
+## Why It Exists
+
+Most AI tooling makes it easy to inspect one response, one diff, or one completion. That is useful, but it misses the bigger question: was the whole run legible and trustworthy?
+
+Agent Run Inspector focuses on the run as a unit of review. The product surface is designed to answer:
+
+- What did the agent do across the entire execution?
+- Where did it pause or become risky?
+- What should a human approve, retry, or redirect next?
+
+## Core Features
+
+- Seeded sidebar of agent tasks with workspace, model, status, start time, and duration
+- Scan-friendly timeline for multi-step execution events
+- Files touched panel for review scope
+- Structured review panel with summary, root cause, assumptions, risks, and recommended next step
+- Run actions to approve, retry, or redirect with a narrower instruction
+- Single API route that generates a structured review artifact
+- Deterministic fallback review generation so the app works without API keys
+- Optional OpenAI-backed review generation when `OPENAI_API_KEY` is configured
+
+## Project Structure
+
+```text
+app/
+  api/review/route.ts
+  layout.tsx
+  page.tsx
+components/
+  RunInspectorApp.tsx
+  TaskSidebar.tsx
+  TaskHeader.tsx
+  Timeline.tsx
+  FilesTouched.tsx
+  ReviewPanel.tsx
+  RedirectModal.tsx
+lib/
+  data.ts
+  review.ts
+  schemas.ts
+  format.ts
+types/
+  index.ts
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Next.js App Router
+- React
+- TypeScript
+- Tailwind CSS
+- Zod
+- OpenAI Node SDK with graceful fallback
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Product Insight
 
-## Learn More
+This prototype is about run-level review, not response-level review.
 
-To learn more about Next.js, take a look at the following resources:
+Response-level review asks whether one answer looks good.
+Run-level review asks whether the whole execution was understandable, appropriately scoped, and safe to continue.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+That means the important artifact is not just the model output. It is the run summary: what the agent touched, what it inferred, what assumptions it made, and where a human should steer next.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Local Development
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open `http://localhost:3000`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Note: the local dev script uses webpack mode for stability with this Next.js 16 setup.
+
+The app works without any API keys. If you want optional model-generated review output, set:
+
+```bash
+OPENAI_API_KEY=your_key_here
+```
+
+You can also override the model with:
+
+```bash
+OPENAI_MODEL=gpt-5.2
+```
+
+## Review API
+
+`POST /api/review`
+
+Request body:
+
+```json
+{
+  "taskTitle": "Fix auth race on token refresh",
+  "timelineEvents": [
+    {
+      "id": "auth-1",
+      "taskId": "task-auth-refresh",
+      "timestampLabel": "0.5s",
+      "kind": "scan",
+      "message": "scanned auth/session.ts, api/refresh.ts, and hooks/useAuth.ts for refresh entry points"
+    }
+  ],
+  "filesTouched": ["auth/session.ts", "api/refresh.ts"]
+}
+```
+
+Response body:
+
+```json
+{
+  "summary": "string",
+  "rootCause": "string",
+  "assumptions": ["string"],
+  "risks": ["string"],
+  "recommendedNextStep": "string"
+}
+```
+
+The route always works without an API key because it falls back to deterministic review generation when no LLM is configured or when model output fails validation.
+
+## What I Would Build Next
+
+- Diff-aware review that correlates the timeline with proposed code edits
+- Review checkpoints during long-running execution, not just after a pause
+- Reviewer annotations and approval history for each run
+- Cross-run comparison to spot repeated failure modes or prompt drift
+- Richer evidence panels for logs, commands, and test outcomes
